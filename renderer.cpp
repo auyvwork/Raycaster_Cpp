@@ -1,15 +1,15 @@
 #include "renderer.h"
-
 #include <SFML/Graphics/RectangleShape.hpp>
+#include <cmath>
+#include <algorithm>
+#include <limits>
 
-constexpr float PI =  3.1415926535f;
 
-constexpr float PLAYER_FOV = 120;
-constexpr size_t MAX_RAYCASTING_STEPS = 64;
+constexpr float PI = 3.1415926535f;
+constexpr float PLAYER_FOV = 120.0f;
+constexpr size_t MAX_RAYCASTING_STEPS = 200;
 constexpr size_t NUM_RAYS = 1200;
-
-constexpr float SCREEN_HEIGHT = 675.0f;
-constexpr float COLUMN_WIDTH = SKREEN_w / (float)NUM_RAYS;
+constexpr float COLUMN_WIDTH = SCREEN_WIDTH / (float)NUM_RAYS;
 
 struct Ray {
     sf::Vector2f hitPosition;
@@ -17,147 +17,164 @@ struct Ray {
     bool hit;
     bool isHitVertical;
 };
-static Ray castRay(sf::Vector2f start,float angleInDegrees,const Map &map);
 
+static Ray castRay(sf::Vector2f start, float angleInDegrees, const Map &map);
 
 void Renderer::draw3dView(sf::RenderTarget &target, const Player &player, const Map &map) {
-    float angle = player.angle - PLAYER_FOV / 2.0f;
+
+    sf::RectangleShape ceiling(sf::Vector2f(SCREEN_WIDTH, SCREEN_HEIGHT / 2.0f));
+    ceiling.setFillColor(sf::Color(50, 50, 100)); // Темно-сине-серый
+    ceiling.setPosition(sf::Vector2f(0,0));
+    target.draw(ceiling);
+
+    sf::RectangleShape floor(sf::Vector2f(SCREEN_WIDTH, SCREEN_HEIGHT / 2.0f));
+    floor.setFillColor(sf::Color(20, 20, 20)); // Серый
+    floor.setPosition(sf::Vector2f(0, SCREEN_HEIGHT / 2.0f));
+    target.draw(floor);
+
+    float angleStart = player.angle - PLAYER_FOV / 2.0f;
     float angleIncrement = PLAYER_FOV / static_cast<float>(NUM_RAYS);
+    float angle = angleStart;
 
     for (size_t i = 0; i < NUM_RAYS; i++, angle += angleIncrement) {
         Ray ray = castRay(player.position, angle, map);
 
         if (ray.hit) {
+            float correctedDistance = ray.distance * cos((angle - player.angle) * PI / 180.0f);
 
-            float correctedDistance = ray.distance * cos((angle - player.angle) / 1.20f * PI / 180.0f);
+            if (correctedDistance < 0.1f) correctedDistance = 0.1f;
 
             float wallH = (map.getCellSize() * SCREEN_HEIGHT) / correctedDistance;
 
+            float drawHeight = wallH;
+            if (drawHeight > SCREEN_HEIGHT) drawHeight = SCREEN_HEIGHT;
 
-            if (wallH > SCREEN_HEIGHT) wallH = SCREEN_HEIGHT;
+            sf::RectangleShape column(sf::Vector2f(COLUMN_WIDTH, drawHeight));
 
-            sf::RectangleShape column(sf::Vector2f(COLUMN_WIDTH, wallH));
-            float shade =  ray.isHitVertical ? 0.8f : 1.0f;
-            float shade2 = ray.distance ;
-            float shape3 = 255 - 2*(shade * shade2 * 0.2f) * (shade * shade2 * 0.2f);
+            column.setPosition(sf::Vector2f(i * COLUMN_WIDTH, (SCREEN_HEIGHT - drawHeight) / 2.0f));
 
-            if (shape3 < 0) {
-                shape3 = 0;
-            }
-            else if (shape3 > 255) {
-                shape3 = 255;
+            float intensity = 255.0f / (1.0f + correctedDistance * 0.05f);
+            if (ray.isHitVertical) intensity *= 0.9f;
 
-            }
-            column.setFillColor(sf::Color( shape3 ,shape3 , shape3 ));
+            if (intensity > 255.0f) intensity = 255.0f;
+            if (intensity < 0.0f) intensity = 0.0f;
 
+            unsigned char colorVal = static_cast<unsigned char>(intensity);
 
-            column.setPosition(sf::Vector2f(i * COLUMN_WIDTH, (SCREEN_HEIGHT - wallH) / 2.0f));
-
+            column.setFillColor(sf::Color(colorVal, colorVal, colorVal));
             target.draw(column);
         }
     }
 }
-void  Renderer::drawRays(sf::RenderTarget &target, const Player &player,const Map &map) {
 
+void Renderer::drawRays(sf::RenderTarget &target, const Player &player, const Map &map) {
+    float angleIncrement = PLAYER_FOV / 50.0f;
 
-    for (float angle = player.angle - PLAYER_FOV / 2.0f; angle < player.angle + PLAYER_FOV; angle+= 0.1f) {
-        Ray ray = castRay(player.position, angle,map);
-
+    for (float angle = player.angle - PLAYER_FOV / 2.0f; angle < player.angle + PLAYER_FOV / 2.0f; angle += angleIncrement) {
+        Ray ray = castRay(player.position, angle, map);
         if (ray.hit) {
             sf::Vertex vertices[2];
             vertices[0].position = player.position;
-            vertices[0].color = sf::Color::Red;
+            vertices[0].color = sf::Color(255, 0, 0, 100);
             vertices[1].position = ray.hitPosition;
-            vertices[1].color = sf::Color::Red;
+            vertices[1].color = sf::Color(255, 0, 0, 100);
             target.draw(vertices, 2, sf::PrimitiveType::Lines);
         }
     }
-
 }
 
-Ray castRay(sf::Vector2f start,float angleInDegrees, const Map &map) {
-     float angle = angleInDegrees * PI / 180;
-    float vTan = -tan(angle), hTan = -1.0f / tan(angle);
+Ray castRay(sf::Vector2f start, float angleInDegrees, const Map &map) {
+    float angle = angleInDegrees * PI / 180.0f;
+
+    while (angle < 0) angle += 2 * PI;
+    while (angle >= 2 * PI) angle -= 2 * PI;
+
     float cellSize = map.getCellSize();
-    bool Hit = false;
-    size_t vdof = 0, hdof = 0;
-    float hdist = std::numeric_limits<float>::max();
-    float vdist = std::numeric_limits<float>::max();
 
-    sf::Vector2f vRayPos, hRayPos,offset;
+    float hDist = std::numeric_limits<float>::max();
+    sf::Vector2f hHitPos;
+    bool hHit = false;
 
+    float aTan = -1.0f / tan(angle);
+    sf::Vector2f rayPos, offset;
 
-
-
-    if (cos(angle) > 0.001f) {
-        vRayPos.x = std::floor(start.x / cellSize)*cellSize + cellSize;
-        vRayPos.y = (start.x - vRayPos.x) * vTan + start.y;
-        offset.x = cellSize;
-        offset.y = -offset.x *vTan;
-    }else if (cos(angle) < -0.001f) {
-        vRayPos.x = std::floor(start.x / cellSize) * cellSize - 0.01f;
-        vRayPos.y = (start.x - vRayPos.x) * vTan +start.y;
-        offset.x = -cellSize;
-        offset.y = -offset.x *vTan;
-    }else {
-        vdof = MAX_RAYCASTING_STEPS;
-    }
-
-
-    const auto &grid = map.getGrid();
-    for (; vdof < MAX_RAYCASTING_STEPS; vdof++) {
-        int mapX = static_cast<int>(vRayPos.x / cellSize);
-        int mapY = static_cast<int>(vRayPos.y / cellSize);
-
-        if (mapY < grid.size() && mapX < grid[mapY].size() && grid[mapY][mapX]) {
-
-            Hit = true;
-            vdist = std::sqrt((vRayPos.x - start.x) * (vRayPos.x - start.x)
-            + (vRayPos.y - start.y) * (vRayPos.y - start.y));
-
-            break;
-        }
-        vRayPos += offset;
-    }
-
-
-
-
-
-
-
-
-    if (sin(angle) > 0.001f) {
-        hRayPos.y = std::floor(start.y / cellSize)*cellSize + cellSize;
-        hRayPos.x = (start.y - hRayPos.y) * hTan +start.x;
-        offset.y = cellSize;
-        offset.x = -offset.y *hTan;
-    }else if (sin(angle) < -0.001f) {
-        hRayPos.y = std::floor(start.y / cellSize)*cellSize - 0.01f;
-        hRayPos.x = (start.y - hRayPos.y) * hTan +start.x;
+    if (angle > PI) {
+        rayPos.y = std::floor(start.y / cellSize) * cellSize - 0.0001f;
+        rayPos.x = (start.y - rayPos.y) * aTan + start.x;
         offset.y = -cellSize;
-        offset.x = -offset.y *hTan;
-    }else {
-        hdof = MAX_RAYCASTING_STEPS;
+        offset.x = -offset.y * aTan;
+    } else if (angle < PI && angle > 0) {
+        rayPos.y = std::floor(start.y / cellSize) * cellSize + cellSize;
+        rayPos.x = (start.y - rayPos.y) * aTan + start.x;
+        offset.y = cellSize;
+        offset.x = -offset.y * aTan;
+    } else {
+        hDist = std::numeric_limits<float>::max();
     }
 
-    for (; hdof < MAX_RAYCASTING_STEPS; hdof++) {
-        int mapX = static_cast<int>(hRayPos.x / cellSize);
-        int mapY = static_cast<int>(hRayPos.y / cellSize);
+    if (angle != 0 && angle != PI) {
+        const auto &grid = map.getGrid();
+        for (int i = 0; i < MAX_RAYCASTING_STEPS; i++) {
+            int mx = static_cast<int>(rayPos.x / cellSize);
+            int my = static_cast<int>(rayPos.y / cellSize);
 
-        if (mapY < grid.size() && mapX < grid[mapY].size() && grid[mapY][mapX]) {
-            Hit = true;
-            hdist = std::sqrt((hRayPos.x - start.x) * (hRayPos.x - start.x)
-           + (hRayPos.y - start.y) * (hRayPos.y - start.y));
-            break;
+            if (my >= 0 && my < grid.size() && mx >= 0 && mx < grid[0].size()) {
+                if (grid[my][mx] == 1) {
+                    hHit = true;
+                    hHitPos = rayPos;
+                    hDist = std::sqrt(pow(hHitPos.x - start.x, 2) + pow(hHitPos.y - start.y, 2));
+                    break;
+                }
+            } else {
+                break;
+            }
+            rayPos += offset;
         }
-        hRayPos += offset;
     }
 
-    return Ray{hdist < vdist ? hRayPos : vRayPos, std::min(hdist,vdist), Hit ,vdist< hdist };
+    float vDist = std::numeric_limits<float>::max();
+    sf::Vector2f vHitPos;
+    bool vHit = false;
 
+    float nTan = -tan(angle);
 
+    if (angle > PI / 2 && angle < 3 * PI / 2) {
+        rayPos.x = std::floor(start.x / cellSize) * cellSize - 0.0001f;
+        rayPos.y = (start.x - rayPos.x) * nTan + start.y;
+        offset.x = -cellSize;
+        offset.y = -offset.x * nTan;
+    } else if (angle < PI / 2 || angle > 3 * PI / 2) {
+        rayPos.x = std::floor(start.x / cellSize) * cellSize + cellSize;
+        rayPos.y = (start.x - rayPos.x) * nTan + start.y;
+        offset.x = cellSize;
+        offset.y = -offset.x * nTan;
+    } else {
+        vDist = std::numeric_limits<float>::max();
+    }
 
+    if (angle != PI / 2 && angle != 3 * PI / 2) {
+        const auto &grid = map.getGrid();
+        for (int i = 0; i < MAX_RAYCASTING_STEPS; i++) {
+            int mx = static_cast<int>(rayPos.x / cellSize);
+            int my = static_cast<int>(rayPos.y / cellSize);
 
+            if (my >= 0 && my < grid.size() && mx >= 0 && mx < grid[0].size()) {
+                if (grid[my][mx] == 1) {
+                    vHit = true;
+                    vHitPos = rayPos;
+                    vDist = std::sqrt(pow(vHitPos.x - start.x, 2) + pow(vHitPos.y - start.y, 2));
+                    break;
+                }
+            } else {
+                break;
+            }
+            rayPos += offset;
+        }
+    }
 
+    if (hDist < vDist) {
+        return {hHitPos, hDist, hHit, false};
+    } else {
+        return {vHitPos, vDist, vHit, true};
+    }
 }
