@@ -4,7 +4,7 @@ project(game)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-set(SFML_DIR "/usr/local/Cellar/sfml/3.0.2/lib/cmake/SFML")
+set(SFML_DIR "C:\\Users\\deddi\\Downloads\\SFML-3.1.0")
 
 find_package(SFML 3 REQUIRED COMPONENTS Graphics Window System)
 

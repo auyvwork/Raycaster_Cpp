@@ -5,7 +5,8 @@
 #include <cmath>
 
 constexpr float PI = 3.1415926535f;
-
+constexpr float ULTRA_SPEED = 8.0f ; 
+constexpr float ULTRA_MAX_SPEED = 100.0f;
 constexpr float MAX_TURN_SPEED = 170.0f;
 constexpr float TURN_ACCEL = 1500.0f;
 constexpr float TURN_FRICTION = 2500.0f;
@@ -73,15 +74,20 @@ void Player::update(float deltaTime, const Map& map) {
     sf::Vector2f accelerationVec(0.0f, 0.0f);
     bool isMoving = false;
 
-    if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::W)) {
-        accelerationVec += direction * ACCELERATION;
-        isMoving = true;
-    }
-    if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::S)) {
-        accelerationVec -= direction * ACCELERATION;
-        isMoving = true;
-    }
-
+    bool isUltraMoving = sf::Keyboard::isKeyPressed(sf::Keyboard::Key::W) && 
+                     sf::Keyboard::isKeyPressed(sf::Keyboard::Key::LShift);
+    if (isUltraMoving) {
+    accelerationVec += direction * ACCELERATION * ULTRA_SPEED;
+    isMoving = true;
+}
+else if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::W)) {
+    accelerationVec += direction * ACCELERATION;
+    isMoving = true;
+}
+else if (sf::Keyboard::isKeyPressed(sf::Keyboard::Key::S)) {
+    accelerationVec -= direction * ACCELERATION;
+    isMoving = true;
+}
     velocity += accelerationVec * deltaTime;
 
     if (!isMoving) {
@@ -96,9 +102,10 @@ void Player::update(float deltaTime, const Map& map) {
         }
     } else {
         float currentSpeed = getLength(velocity);
-        if (currentSpeed > MAX_SPEED) {
+        float currentMaxSpeed = isUltraMoving ? ULTRA_MAX_SPEED : MAX_SPEED;
+        if (currentSpeed > currentMaxSpeed) {
             velocity /= currentSpeed;
-            velocity *= MAX_SPEED;
+            velocity *= currentMaxSpeed;
         }
     }
 
