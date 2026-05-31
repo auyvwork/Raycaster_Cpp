@@ -72,7 +72,7 @@ void Player::update(float deltaTime, const Map& map) {
     float radians = angle * PI / 180.0f;
     sf::Vector2f direction(cos(radians), sin(radians));
     sf::Vector2f accelerationVec(0.0f, 0.0f);
-    bool isMoving = false;
+    isMoving = false;
 
     bool isUltraMoving = sf::Keyboard::isKeyPressed(sf::Keyboard::Key::W) && 
                      sf::Keyboard::isKeyPressed(sf::Keyboard::Key::LShift);

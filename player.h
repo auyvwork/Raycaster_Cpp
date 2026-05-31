@@ -13,11 +13,13 @@ public:
     void draw(sf::RenderTarget &target) const;
 
     void update(float deltaTime, const Map& map);
-
+    bool Moving() const { return isMoving; };
     sf::Vector2f position;
     float angle;
 
     sf::Vector2f velocity;
     float turnVelocity;
+private : 
+    bool isMoving= false ; 
 };
 #endif

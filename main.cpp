@@ -7,13 +7,16 @@
 #include "map.h"
 #include "player.h"
 #include "renderer.h"
+#include "SoundManager.h"
 
 int main() {
     sf::RenderWindow window(sf::VideoMode(sf::Vector2u(static_cast<unsigned int>(SCREEN_WIDTH), static_cast<unsigned int>(SCREEN_HEIGHT))), "Raycaster C++",
             sf::Style::Close | sf::Style::Titlebar);
 
     window.setFramerateLimit(120);
-
+    SoundManager soundManager;
+    soundManager.loadAllSounds();  
+    soundManager.setVolume(70.0f);
     int height = 15;
     int width = 20;
 
@@ -63,7 +66,7 @@ int main() {
             window.clear(sf::Color::Black);
 
             player.update(deltaTime, map);
-
+            soundManager.updateFootsteps(player.Moving());
             renderer.draw3dView(window, player, map);
 
             map.draw(window);
